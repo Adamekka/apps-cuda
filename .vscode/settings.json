@@ -1,0 +1,4 @@
+{
+  "nixEnvSelector.nixFile": "${workspaceFolder}/flake.nix",
+  "nixEnvPicker.envFile": "${workspaceFolder}${/}flake.nix"
+}

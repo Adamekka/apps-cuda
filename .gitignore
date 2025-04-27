@@ -1,0 +1,5 @@
+/apps-cuda-demo/
+
+*.o
+a.out
+.clangd
