@@ -59,6 +59,7 @@
             ncurses5
             binutils
             stdenv.cc
+            pkg-config
           ];
 
           shellHook = ''
