@@ -22,13 +22,39 @@ __global__ auto kernel_insert_image(
         = inset_x <= x && x < small_image.size.x + inset_x && inset_y <= y
        && y < small_image.size.y + inset_y;
 
-    uchar3 image_pixel
-        = inserting_small_image
-            ? small_image.data_uchar3
-                  [((y - inset_y) * small_image.size.x) + x - inset_x]
-            : big_image.data_uchar3[(y * big_image.size.x) + x];
+    uchar4 bg_pixel = big_image.data_uchar4[(y * big_image.size.x) + x];
 
-    result_image.data_uchar3[(y * result_image.size.x) + x] = image_pixel;
+    if (!inserting_small_image) {
+        result_image.data_uchar4[(y * result_image.size.x) + x] = bg_pixel;
+        return;
+    }
+
+    uchar4 pixel;
+
+    uchar4 fg_pixel
+        = small_image.data_uchar4
+              [((y - inset_y) * small_image.size.x) + (x - inset_x)];
+
+    float alpha = static_cast<float>(fg_pixel.w) / 255.0F;
+
+    pixel.x = static_cast<uint8_t>(
+        (static_cast<float>(fg_pixel.x) * alpha)
+        + (static_cast<float>(bg_pixel.x) * (1.0F - alpha))
+    );
+
+    pixel.y = static_cast<uint8_t>(
+        (static_cast<float>(fg_pixel.y) * alpha)
+        + (static_cast<float>(bg_pixel.y) * (1.0F - alpha))
+    );
+
+    pixel.z = static_cast<uint8_t>(
+        (static_cast<float>(fg_pixel.z) * alpha)
+        + (static_cast<float>(bg_pixel.z) * (1.0F - alpha))
+    );
+
+    pixel.w = 255;
+
+    result_image.data_uchar4[(y * result_image.size.x) + x] = pixel;
 }
 
 auto cuda_run_insert_image(
@@ -58,14 +84,6 @@ auto cuda_run_insert_image(
 }
 
 // MARK: Rotate image
-
-__device__ auto sample_or_black(CudaImage img, uint32_t x, uint32_t y)
-    -> uchar3 {
-    if (x >= img.size.x || y >= img.size.y)
-        return make_uchar3(0, 0, 0);
-
-    return img.data_uchar3[(y * img.size.x) + x];
-}
 
 __global__ void kernel_rotate_image(
     CudaImage input_image, CudaImage result_image, float angle_radians
@@ -104,10 +122,8 @@ __global__ void kernel_rotate_image(
         || y_orig >= input_image.size.y)
         return;
 
-    uchar3 pixel
-        = input_image.data_uchar3[(y_orig * input_image.size.x) + x_orig];
-    result_image.data_uchar3[(y_rotate * result_image.size.x) + x_rotate]
-        = pixel;
+    result_image.data_uchar4[(y_rotate * result_image.size.x) + x_rotate]
+        = input_image.data_uchar4[(y_orig * input_image.size.x) + x_orig];
 }
 
 auto cuda_run_rotate_image(
@@ -139,7 +155,7 @@ auto cuda_run_rotate_image(
 // MARK: Bilinear interpolate
 
 __device__ auto bilinear_interpolate(const CudaImage img, float x, float y)
-    -> uchar3 {
+    -> uchar4 {
     int x0 = static_cast<int>(x);
     int y0 = static_cast<int>(y);
     int x1 = x0 + 1;
@@ -148,19 +164,19 @@ __device__ auto bilinear_interpolate(const CudaImage img, float x, float y)
     float dx = x - static_cast<float>(x0);
     float dy = y - static_cast<float>(y0);
 
-    auto get = [&](int xi, int yi) -> uchar3 {
+    auto get = [&](int xi, int yi) -> uchar4 {
         if (xi < 0 || xi >= img.size.x || yi < 0 || yi >= img.size.y)
-            return make_uchar3(0, 0, 0);
+            return make_uchar4(0, 0, 0, 255);
 
-        return img.data_uchar3[(yi * img.size.x) + xi];
+        return img.data_uchar4[(yi * img.size.x) + xi];
     };
 
-    uchar3 p00 = get(x0, y0);
-    uchar3 p01 = get(x1, y0);
-    uchar3 p10 = get(x0, y1);
-    uchar3 p11 = get(x1, y1);
+    uchar4 p00 = get(x0, y0);
+    uchar4 p01 = get(x1, y0);
+    uchar4 p10 = get(x0, y1);
+    uchar4 p11 = get(x1, y1);
 
-    uchar3 result;
+    uchar4 result;
     // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
     for (int i = 0; i < 3; ++i) {
         float v00 = (reinterpret_cast<uint8_t*>(&p00))[i];
@@ -194,8 +210,8 @@ kernel_bilinear_scale(CudaImage input_image, CudaImage result_image) -> void {
     float src_x = static_cast<float>(x) * scale_x;
     float src_y = static_cast<float>(y) * scale_y;
 
-    uchar3 interpolated = bilinear_interpolate(input_image, src_x, src_y);
-    result_image.data_uchar3[(y * result_image.size.x) + x] = interpolated;
+    uchar4 interpolated = bilinear_interpolate(input_image, src_x, src_y);
+    result_image.data_uchar4[(y * result_image.size.x) + x] = interpolated;
 }
 
 auto cuda_run_bilinear_scale(

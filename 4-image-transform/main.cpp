@@ -28,14 +28,16 @@ auto main(int32_t argc, char** argv) -> int32_t {
         return 1;
     }
 
-    cv::Mat big_image = cv::imread(argv[1], cv::IMREAD_COLOR);
+    cv::Mat big_image = cv::imread(argv[1], cv::IMREAD_UNCHANGED);
+    assert(big_image.channels() == 4);
 
     if (!big_image.data) {
         std::cout << "Unable to read file '" << argv[1] << "'\n";
         return 1;
     }
 
-    cv::Mat small_image = cv::imread(argv[2], cv::IMREAD_COLOR);
+    cv::Mat small_image = cv::imread(argv[2], cv::IMREAD_UNCHANGED);
+    assert(big_image.channels() == 4);
 
     if (!small_image.data) {
         std::cout << "Unable to read file '" << argv[2] << "'\n";
@@ -45,43 +47,43 @@ auto main(int32_t argc, char** argv) -> int32_t {
     assert(big_image.size().width >= small_image.size().width);
     assert(big_image.size().height >= small_image.size().height);
 
-    cv::Mat insert_image = cv::Mat(big_image.size(), CV_8UC3);
+    cv::Mat insert_image = cv::Mat(big_image.size(), CV_8UC4);
 
     CudaImage cuda_big_image{
         .size = {static_cast<uint32_t>(big_image.size().width), static_cast<uint32_t>(big_image.size().height)},
-        .data_uchar3 = reinterpret_cast<uchar3*>(big_image.data), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        .data_uchar4 = reinterpret_cast<uchar4*>(big_image.data), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     };
 
     CudaImage cuda_small_image{
         .size = {static_cast<uint32_t>(small_image.size().width), static_cast<uint32_t>(small_image.size().height)},
-        .data_uchar3 = reinterpret_cast<uchar3*>(small_image.data), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        .data_uchar4 = reinterpret_cast<uchar4*>(small_image.data), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     };
 
     CudaImage cuda_insert_image{
         .size = {static_cast<uint32_t>(insert_image.size().width), static_cast<uint32_t>(insert_image.size().height)},
-        .data_uchar3 = reinterpret_cast<uchar3*>(insert_image.data), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        .data_uchar4 = reinterpret_cast<uchar4*>(insert_image.data), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     };
 
     cuda_run_insert_image(cuda_big_image, cuda_small_image, cuda_insert_image);
 
-    cv::Mat rotated_image = cv::Mat(insert_image.size(), CV_8UC3);
+    cv::Mat rotated_image = cv::Mat(insert_image.size(), CV_8UC4);
 
     CudaImage cuda_rotated_image{
         .size = {static_cast<uint32_t>(rotated_image.size().width), static_cast<uint32_t>(rotated_image.size().height)},
-        .data_uchar3 = reinterpret_cast<uchar3*>(rotated_image.data), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        .data_uchar4 = reinterpret_cast<uchar4*>(rotated_image.data), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     };
 
     cuda_run_rotate_image(cuda_insert_image, cuda_rotated_image, 3);
 
     cv::Mat bilin_scale_image
-        = cv::Mat(insert_image.rows / 2, insert_image.cols * 2, CV_8UC3);
+        = cv::Mat(insert_image.rows / 2, insert_image.cols * 2, CV_8UC4);
 
     CudaImage cuda_bilin_scale_image{
         .size = {static_cast<uint32_t>(bilin_scale_image.size().width), static_cast<uint32_t>(bilin_scale_image.size().height)},
-        .data_uchar3 = reinterpret_cast<uchar3*>(bilin_scale_image.data), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        .data_uchar4 = reinterpret_cast<uchar4*>(bilin_scale_image.data), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     };
 
-    cuda_run_bilinear_scale(cuda_big_image, cuda_bilin_scale_image);
+    cuda_run_bilinear_scale(cuda_rotated_image, cuda_bilin_scale_image);
 
     cv::imshow("Big", big_image);
     cv::imshow("Small", small_image);
